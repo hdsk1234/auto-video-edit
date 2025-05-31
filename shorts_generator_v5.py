@@ -447,16 +447,13 @@ class TkinterLogger(ProgressBarLogger):
     def __init__(self, progress_callback):
         super().__init__()
         self.progress_callback = progress_callback
-
-    def callback(self, **changes):
-        if 'progress' in changes:
-            percent = int(changes['progress'] * 100)
-            self.progress_callback(percent)
+        # self.message_callback = message_callback 
 
     def bars_callback(self, bar, attr, value, old_value=None):
         if bar == 't':
             percent = int(value)
             self.progress_callback(percent)
+            print(percent)
 
 class ShortsGeneratorApp:
     def __init__(self, root):
@@ -640,7 +637,10 @@ class ShortsGeneratorApp:
         
         # 팝업 내용 (제작 중 표시)
         self.progress_bar = ttk.Progressbar(self.loading_popup, orient='horizontal', length=300, mode='determinate', maximum=100)
-        self.progress_bar.pack(pady=20)
+        self.progress_bar.pack(pady=(20, 0))
+
+        self.percent_label = tk.Label(self.loading_popup, text="", font=("Helvetica", 14), padx=20, pady=0)
+        self.percent_label.pack(fill=tk.BOTH, expand=True)
 
         self.loading_label = tk.Label(self.loading_popup, text="영상 제작 중입니다...\n잠시만 기다려주세요.", font=("Helvetica", 14), padx=20, pady=20)
         self.loading_label.pack(fill=tk.BOTH, expand=True)
@@ -689,10 +689,18 @@ class ShortsGeneratorApp:
         return paths
     
     def update_progress(self, percent):
+        percent = min(100, percent)
         self.progress_bar['value'] = percent
-        self.loading_label.config(text=f"{min(100, percent)}%")
+
+        self.percent_label.config(text=f"{percent}%", font=("Helvetica", 14))
+        self.percent_label.pack(fill=tk.BOTH, expand=True,)
+
+        self.loading_label.config(text="영상 제작 중입니다...\n잠시만 기다려주세요.")
+        self.loading_label.pack(fill=tk.BOTH, expand=True)
+
         root.update_idletasks()
 
+   
     def start_creation(self):
         if not self.work_dir:
             messagebox.showerror("오류", "작업 폴더를 먼저 선택하세요.")
