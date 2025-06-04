@@ -708,211 +708,212 @@ class ShortsGeneratorApp:
         self.show_loading_popup()
         self.root.update() 
 
+        files = self.load_files()
+        threading.Thread(target=self.create_video, args=(files,)).start() # 다른 스레드에서 영상 제작 <-- 진행률 로그를 위한 것 
+        # self.create_video(files)
+        
+    def create_video(self, files):
         try:
-            files = self.load_files()
-            threading.Thread(target=self.create_video, args=(files,)).start() # 다른 스레드에서 영상 제작 <-- 진행률 로그를 위한 것 
-            # self.create_video(files)
+            title = self.title_entry.get() 
+            # subtitles = file_to_subtitles(files["subtitles"]) # srt 파일의 마지막 2줄은 빈 줄이어야 함!! # subtitles는 오디오와 이미지 삽입에도 사용됨.
+
+            # 1. 레이아웃 클립 생성
+            layout_clip = ImageClip(files['layout_image_file']).set_duration(60)
+
+            # 2. 제목 클립 생성
+            if title == "":
+                title = "제목없음"
+            title_clip = TextClip(title, fontsize=65, color='black', font="/Users/sangwoo-park/Library/Fonts/BMDOHYEON_otf.otf").set_duration(60).set_position((100, 300))
+
+            # 3. 자막 클립 리스트 생성
+            subtitle_clips = []
+
+            prev_col = -1
+            for subtitle_label in reversed(self.subtitle_manager.SubtitleBlock_list):
+                if subtitle_label.empty:
+                    continue
+
+                start = subtitle_label.start
+                col = subtitle_label.col
+                if prev_col != col: end = subtitle_label.end
+                prev_col = col
+                text = subtitle_label.text
+                row = subtitle_label.row
+                col = subtitle_label.col
+
+                subtitle_clips.append(TextClip(text, fontsize=50, color='black', font="/Users/sangwoo-park/Library/Fonts/BMDOHYEON_otf.otf").set_start(start).set_end(end).set_position(('center', 500 + row*80)))
+
+            # 4. 이미지 클립 리스트 생성
+
+            # 동적 crop 처리 함수
+            def make_dynamic_crop(new_width, new_height, effect_code):
+                def dynamic_crop(get_frame, t):
+                    frame = get_frame(t)  # t초에서의 프레임 (numpy 배열)
+
+                    # 기본 crop 범위 (전체)
+                    x1, x2 = 0, new_width
+                    y1, y2 = 0, new_height
+                    
+                    # crop 좌표 계산
+                    if effect_code == 'l':  # 왼쪽으로 이동
+                        x1 = int(new_width*0.1 + t*-20)   # 초당 -20px 왼쪽 이동
+                        x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
+                        y1 = int(new_height*0.05)
+                        y2 = int(new_height*0.95)
+                    elif effect_code == 'r':  # 오른쪽으로 이동
+                        x1 = int(0 + t*20)                # 초당 20px 오른쪽 이동
+                        x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
+                        y1 = int(new_height*0.1)
+                        y2 = int(new_height*0.9)
+                    elif effect_code == 'u':  # 위로 이동
+                        x1 = int(new_width*0.1)
+                        x2 = int(new_width*0.9)
+                        y1 = int(new_height*0.1 + t*-20)   # 초당 -20px 위쪽 이동
+                        y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
+                    elif effect_code == 'd':  # 아래로 이동
+                        x1 = int(new_width*0.1)
+                        x2 = int(new_width*0.9)
+                        y1 = int(0 + t*20)                 # 초당 20px 아래쪽 이동
+                        y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
+                    elif effect_code == 'i':  # 확대 (줌인)
+                        center_x = new_width // 2
+                        center_y = new_height // 2
+                        zoom_factor = 1 + t * 0.05  # 초당 0.1배 확대
+                        crop_width = new_width / zoom_factor
+                        crop_height = new_height / zoom_factor
+
+                        x1 = max(0, center_x - crop_width / 2)
+                        x2 = min(new_width, x1 + crop_width)
+                        y1 = max(0, center_y - crop_height / 2)
+                        y2 = min(new_height, y1 + crop_height)
+                    elif effect_code == 'o':  # 축소 (줌아웃)
+                        center_x = new_width // 2
+                        center_y = new_height // 2
+                        zoom_factor = max(1, 1.3 + t * -0.05)  # 초당 0.07배 축소
+                        crop_width = new_width / zoom_factor
+                        crop_height = new_height / zoom_factor
+
+                        x1 = max(0, center_x - crop_width / 2)
+                        x2 = min(new_width, x1 + crop_width)
+                        y1 = max(0, center_y - crop_height / 2)
+                        y2 = min(new_height, y1 + crop_height)
+
+                    elif effect_code == 'n':  # 효과 없음
+                        pass
+                    else:
+                        raise ValueError(f"❌ 알 수 없는 effect_code: {effect_code}")
+                    
+                    cropped = frame[int(y1):int(y2), int(x1):int(x2)]
+                        
+                    # crop된 부분을 원래 캔버스 크기로 resize
+                    pil_img = Image.fromarray(cropped)
+                    resized = pil_img.resize((new_width, new_height), resample=Image.LANCZOS)
+
+                    return np.array(resized)
+                return dynamic_crop
+
+
+            images_dir = os.path.join(self.work_dir, 'images')
+            image_file_names = sorted([f for f in os.listdir(images_dir) if not f.startswith('.') and os.path.isfile(os.path.join(images_dir, f))])
+            image_clips = []
+            for img_name in image_file_names:
+                img_num = os.path.splitext(img_name)[0][:-1] # 마지막 글자 제외
+                img_path = os.path.join(images_dir, img_name)
+                effect_code = os.path.splitext(img_name)[0][-1]
+
+                with tempfile.TemporaryDirectory() as temp_dir: # 이미지 세로 길이 700으로 수정
+                    img = Image.open(img_path)
+                    width, height = img.size
+                    new_height = 850
+                    aspect_ratio = width / height
+                    new_width = int(new_height * aspect_ratio)
+                    resized_img = img.resize((new_width, new_height)).convert("RGB")
+                    resized_img_path = os.path.join(temp_dir, "resized.jpg")
+                    resized_img.save(resized_img_path)
+
+                    if img_num.isdigit(): # 숫자만
+                        img_num = int(img_num)
+                        for block in self.subtitle_manager.SubtitleBlock_list:
+                            if block.num == img_num:
+                                subtitle_label = block
+                                break   
+                        start = subtitle_label.start
+                        end = subtitle_label.end
+                        row = subtitle_label.row
+                        ypos = 500 + (row+1)*80
+                
+                    elif re.match(r'^\d+-\d+$', img_num): # 숫자-숫자
+                        img_num1, img_num2 = map(int, img_num.split('-'))
+                        for block in self.subtitle_manager.SubtitleBlock_list:
+                            if block.num == img_num1:
+                                subtitle_label1 = block
+                                break
+                        for block in self.subtitle_manager.SubtitleBlock_list:
+                            if block.num == img_num2:
+                                subtitle_label2 = block
+                                break
+                        start = subtitle_label1.start
+                        end = subtitle_label2.end
+                        row = subtitle_label2.row
+                        ypos = 500 + (row+1)*80 
+    
+                    else:
+                        print("이미지 이름이 잘못되었습니다.")
+
+                    image_clip = ImageClip(resized_img_path).set_duration(end-start).set_start(start).set_position(('center', ypos))
+                    image_clip = image_clip.fl(make_dynamic_crop(new_width, new_height, effect_code))
+                    image_clips.append(image_clip)  
+            
+            # 5. 오디오 클립 리스트 생성
+            
+            # tts
+            tts_clip = AudioFileClip(files['tts'])
+            
+            # 효과음
+            sound_effect_clips = []
+            image_nums = [os.path.splitext(f)[0] for f in os.listdir(images_dir) if not f.startswith('.') and os.path.isfile(os.path.join(images_dir, f))]
+
+            for block in self.subtitle_manager.SubtitleBlock_list:
+                start = block.start
+                row = block.row
+                is_highlight = block.highlight
+                if is_highlight: # 두둥 효과음
+                    sound_effect_clips.append(AudioFileClip(files['sound_effect3']).set_start(start))
+                elif row == 0: # 장면 전환 효과음
+                    sound_effect_clips.append(AudioFileClip(files['sound_effect1']).set_start(start))
+                else: # 이미지 삽입 효과음
+                    for img_num in image_nums:
+                        img_num = img_num[:-1]
+                        if re.match(r'^\d+-\d+$', img_num): # 00-01 형식
+                            img_num = int(img_num.split('-')[0])
+                        else: # 00 형식
+                            img_num = int(img_num)
+                            
+                        if img_num == block.num:
+                            sound_effect_clips.append(AudioFileClip(files['sound_effect2']).set_start(start))
+                            break   
+                
+            all_audio_clip = CompositeAudioClip([tts_clip] + sound_effect_clips)   
+
+
+            # 최종 클립: 레이아웃 클립 + 제목 클립 + 자막 클립 + 이미지 클립 + 오디오 클립
+            final_clip = CompositeVideoClip([layout_clip] + [title_clip] + subtitle_clips + image_clips).set_audio(all_audio_clip)
+            if self.partial_render_var.get(): # 테스트용으로 일부만 렌더링
+                final_clip = final_clip.subclip(0, 5)
+
+            # 클립을 비디오로 생성
+            result_folder = Path(self.work_dir).joinpath("result")
+            result_folder.mkdir(parents=True, exist_ok=True)
+            output_path = str(result_folder.joinpath(f"{title}.mov"))
+            logger = TkinterLogger(self.update_progress)
+            final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=30, logger=logger)
+            self.root.after(0, self.on_video_complete)
         except Exception as e:
               self.close_loading_popup()
               error_message = f"영상 제작 중 문제가 발생했습니다: {e}\n\n" \
                         f"오류 위치:\n{traceback.format_exc()}"
               messagebox.showerror("오류", error_message)
         
-    def create_video(self, files):
-        title = self.title_entry.get() 
-        # subtitles = file_to_subtitles(files["subtitles"]) # srt 파일의 마지막 2줄은 빈 줄이어야 함!! # subtitles는 오디오와 이미지 삽입에도 사용됨.
-
-        # 1. 레이아웃 클립 생성
-        layout_clip = ImageClip(files['layout_image_file']).set_duration(60)
-
-        # 2. 제목 클립 생성
-        if title == "":
-            title = "제목없음"
-        title_clip = TextClip(title, fontsize=65, color='black', font="/Users/sangwoo-park/Library/Fonts/BMDOHYEON_otf.otf").set_duration(60).set_position((100, 300))
-
-        # 3. 자막 클립 리스트 생성
-        subtitle_clips = []
-
-        prev_col = -1
-        for subtitle_label in reversed(self.subtitle_manager.SubtitleBlock_list):
-            if subtitle_label.empty:
-                continue
-
-            start = subtitle_label.start
-            col = subtitle_label.col
-            if prev_col != col: end = subtitle_label.end
-            prev_col = col
-            text = subtitle_label.text
-            row = subtitle_label.row
-            col = subtitle_label.col
-
-            subtitle_clips.append(TextClip(text, fontsize=50, color='black', font="/Users/sangwoo-park/Library/Fonts/BMDOHYEON_otf.otf").set_start(start).set_end(end).set_position(('center', 500 + row*80)))
-
-        # 4. 이미지 클립 리스트 생성
-
-        # 동적 crop 처리 함수
-        def make_dynamic_crop(new_width, new_height, effect_code):
-            def dynamic_crop(get_frame, t):
-                frame = get_frame(t)  # t초에서의 프레임 (numpy 배열)
-
-                # 기본 crop 범위 (전체)
-                x1, x2 = 0, new_width
-                y1, y2 = 0, new_height
-                
-                # crop 좌표 계산
-                if effect_code == 'l':  # 왼쪽으로 이동
-                    x1 = int(new_width*0.1 + t*-20)   # 초당 -20px 왼쪽 이동
-                    x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
-                    y1 = int(new_height*0.05)
-                    y2 = int(new_height*0.95)
-                elif effect_code == 'r':  # 오른쪽으로 이동
-                    x1 = int(0 + t*20)                # 초당 20px 오른쪽 이동
-                    x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
-                    y1 = int(new_height*0.1)
-                    y2 = int(new_height*0.9)
-                elif effect_code == 'u':  # 위로 이동
-                    x1 = int(new_width*0.1)
-                    x2 = int(new_width*0.9)
-                    y1 = int(new_height*0.1 + t*-20)   # 초당 -20px 위쪽 이동
-                    y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
-                elif effect_code == 'd':  # 아래로 이동
-                    x1 = int(new_width*0.1)
-                    x2 = int(new_width*0.9)
-                    y1 = int(0 + t*20)                 # 초당 20px 아래쪽 이동
-                    y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
-                elif effect_code == 'i':  # 확대 (줌인)
-                    center_x = new_width // 2
-                    center_y = new_height // 2
-                    zoom_factor = 1 + t * 0.05  # 초당 0.1배 확대
-                    crop_width = new_width / zoom_factor
-                    crop_height = new_height / zoom_factor
-
-                    x1 = max(0, center_x - crop_width / 2)
-                    x2 = min(new_width, x1 + crop_width)
-                    y1 = max(0, center_y - crop_height / 2)
-                    y2 = min(new_height, y1 + crop_height)
-                elif effect_code == 'o':  # 축소 (줌아웃)
-                    center_x = new_width // 2
-                    center_y = new_height // 2
-                    zoom_factor = max(1, 1.3 + t * -0.05)  # 초당 0.07배 축소
-                    crop_width = new_width / zoom_factor
-                    crop_height = new_height / zoom_factor
-
-                    x1 = max(0, center_x - crop_width / 2)
-                    x2 = min(new_width, x1 + crop_width)
-                    y1 = max(0, center_y - crop_height / 2)
-                    y2 = min(new_height, y1 + crop_height)
-
-                elif effect_code == 'n':  # 효과 없음
-                    pass
-                else:
-                    raise ValueError(f"❌ 알 수 없는 effect_code: {effect_code}")
-                
-                cropped = frame[int(y1):int(y2), int(x1):int(x2)]
-                    
-                # crop된 부분을 원래 캔버스 크기로 resize
-                pil_img = Image.fromarray(cropped)
-                resized = pil_img.resize((new_width, new_height), resample=Image.LANCZOS)
-
-                return np.array(resized)
-            return dynamic_crop
-
-
-        images_dir = os.path.join(self.work_dir, 'images')
-        image_file_names = sorted([f for f in os.listdir(images_dir) if not f.startswith('.') and os.path.isfile(os.path.join(images_dir, f))])
-        image_clips = []
-        for img_name in image_file_names:
-            img_num = os.path.splitext(img_name)[0][:-1] # 마지막 글자 제외
-            img_path = os.path.join(images_dir, img_name)
-            effect_code = os.path.splitext(img_name)[0][-1]
-
-            with tempfile.TemporaryDirectory() as temp_dir: # 이미지 세로 길이 700으로 수정
-                img = Image.open(img_path)
-                width, height = img.size
-                new_height = 850
-                aspect_ratio = width / height
-                new_width = int(new_height * aspect_ratio)
-                resized_img = img.resize((new_width, new_height)).convert("RGB")
-                resized_img_path = os.path.join(temp_dir, "resized.jpg")
-                resized_img.save(resized_img_path)
-
-                if img_num.isdigit(): # 숫자만
-                    img_num = int(img_num)
-                    for block in self.subtitle_manager.SubtitleBlock_list:
-                        if block.num == img_num:
-                            subtitle_label = block
-                            break   
-                    start = subtitle_label.start
-                    end = subtitle_label.end
-                    row = subtitle_label.row
-                    ypos = 500 + (row+1)*80
-            
-                elif re.match(r'^\d+-\d+$', img_num): # 숫자-숫자
-                    img_num1, img_num2 = map(int, img_num.split('-'))
-                    for block in self.subtitle_manager.SubtitleBlock_list:
-                        if block.num == img_num1:
-                            subtitle_label1 = block
-                            break
-                    for block in self.subtitle_manager.SubtitleBlock_list:
-                        if block.num == img_num2:
-                            subtitle_label2 = block
-                            break
-                    start = subtitle_label1.start
-                    end = subtitle_label2.end
-                    row = subtitle_label2.row
-                    ypos = 500 + (row+1)*80 
-   
-                else:
-                    print("이미지 이름이 잘못되었습니다.")
-
-                image_clip = ImageClip(resized_img_path).set_duration(end-start).set_start(start).set_position(('center', ypos))
-                image_clip = image_clip.fl(make_dynamic_crop(new_width, new_height, effect_code))
-                image_clips.append(image_clip)  
-        
-        # 5. 오디오 클립 리스트 생성
-        
-        # tts
-        tts_clip = AudioFileClip(files['tts'])
-        
-        # 효과음
-        sound_effect_clips = []
-        image_nums = [os.path.splitext(f)[0] for f in os.listdir(images_dir) if not f.startswith('.') and os.path.isfile(os.path.join(images_dir, f))]
-
-        for block in self.subtitle_manager.SubtitleBlock_list:
-            start = block.start
-            row = block.row
-            is_highlight = block.highlight
-            if is_highlight: # 두둥 효과음
-                sound_effect_clips.append(AudioFileClip(files['sound_effect3']).set_start(start))
-            elif row == 0: # 장면 전환 효과음
-                sound_effect_clips.append(AudioFileClip(files['sound_effect1']).set_start(start))
-            else: # 이미지 삽입 효과음
-                for img_num in image_nums:
-                    img_num = img_num[:-1]
-                    if re.match(r'^\d+-\d+$', img_num): # 00-01 형식
-                        img_num = int(img_num.split('-')[0])
-                    else: # 00 형식
-                        img_num = int(img_num)
-                        
-                    if img_num == block.num:
-                        sound_effect_clips.append(AudioFileClip(files['sound_effect2']).set_start(start))
-                        break   
-            
-        all_audio_clip = CompositeAudioClip([tts_clip] + sound_effect_clips)   
-
-
-        # 최종 클립: 레이아웃 클립 + 제목 클립 + 자막 클립 + 이미지 클립 + 오디오 클립
-        final_clip = CompositeVideoClip([layout_clip] + [title_clip] + subtitle_clips + image_clips).set_audio(all_audio_clip)
-        if self.partial_render_var.get(): # 테스트용으로 일부만 렌더링
-            final_clip = final_clip.subclip(0, 5)
-
-        # 클립을 비디오로 생성
-        result_folder = Path(self.work_dir).joinpath("result")
-        result_folder.mkdir(parents=True, exist_ok=True)
-        output_path = str(result_folder.joinpath(f"{title}.mov"))
-        logger = TkinterLogger(self.update_progress)
-        final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=30, logger=logger)
-        self.root.after(0, self.on_video_complete)
 
     def on_video_complete(self):
         self.close_loading_popup()
