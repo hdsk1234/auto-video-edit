@@ -451,7 +451,7 @@ class TkinterLogger(ProgressBarLogger):
 
     def bars_callback(self, bar, attr, value, old_value=None):
         if bar == 't':
-            percent = int(value)
+            percent = round(int(value) / 18, 2)
             self.progress_callback(percent)
             print(percent)
 
@@ -761,25 +761,25 @@ class ShortsGeneratorApp:
                 
                 # crop 좌표 계산
                 if effect_code == 'l':  # 왼쪽으로 이동
-                    x1 = int(0 + t*20)                # 초당 20px 오른쪽 이동
-                    x2 = int(x1 + new_width*0.8)      # 가로 크기 유지
-                    y1 = int(new_height*0.1)
-                    y2 = int(new_height*0.9)
+                    x1 = int(new_width*0.1 + t*-20)   # 초당 -20px 왼쪽 이동
+                    x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
+                    y1 = int(new_height*0.05)
+                    y2 = int(new_height*0.95)
                 elif effect_code == 'r':  # 오른쪽으로 이동
-                    x1 = int(new_width*0.2 + t*-20)   # 초당 -20px 왼쪽 이동
-                    x2 = int(x1 + new_width*0.8)      # 가로 크기 유지
+                    x1 = int(0 + t*20)                # 초당 20px 오른쪽 이동
+                    x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
                     y1 = int(new_height*0.1)
                     y2 = int(new_height*0.9)
                 elif effect_code == 'u':  # 위로 이동
                     x1 = int(new_width*0.1)
                     x2 = int(new_width*0.9)
-                    y1 = int(new_height*0.2 + t*-20)   # 초당 -20px 위쪽 이동
-                    y2 = int(y1 + new_height*0.8)      # 세로 크기 유지
+                    y1 = int(new_height*0.1 + t*-20)   # 초당 -20px 위쪽 이동
+                    y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
                 elif effect_code == 'd':  # 아래로 이동
                     x1 = int(new_width*0.1)
                     x2 = int(new_width*0.9)
                     y1 = int(0 + t*20)                 # 초당 20px 아래쪽 이동
-                    y2 = int(y1 + new_height*0.8)      # 세로 크기 유지
+                    y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
                 elif effect_code == 'i':  # 확대 (줌인)
                     center_x = new_width // 2
                     center_y = new_height // 2
@@ -829,7 +829,7 @@ class ShortsGeneratorApp:
             with tempfile.TemporaryDirectory() as temp_dir: # 이미지 세로 길이 700으로 수정
                 img = Image.open(img_path)
                 width, height = img.size
-                new_height = 700
+                new_height = 850
                 aspect_ratio = width / height
                 new_width = int(new_height * aspect_ratio)
                 resized_img = img.resize((new_width, new_height)).convert("RGB")
