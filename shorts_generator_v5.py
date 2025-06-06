@@ -1,9 +1,3 @@
-'''
-[추가된 것]
-로그 기능 추가
-
-'''
-
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -700,7 +694,6 @@ class ShortsGeneratorApp:
 
         root.update_idletasks()
 
-   
     def start_creation(self):
         if not self.work_dir:
             messagebox.showerror("오류", "작업 폴더를 먼저 선택하세요.")
@@ -763,16 +756,16 @@ class ShortsGeneratorApp:
                     elif effect_code == 'r':  # 오른쪽으로 이동
                         x1 = int(0 + t*20)                # 초당 20px 오른쪽 이동
                         x2 = int(x1 + new_width*0.9)      # 가로 크기 유지
-                        y1 = int(new_height*0.1)
-                        y2 = int(new_height*0.9)
+                        y1 = int(new_height*0.05)
+                        y2 = int(new_height*0.95)
                     elif effect_code == 'u':  # 위로 이동
-                        x1 = int(new_width*0.1)
-                        x2 = int(new_width*0.9)
+                        x1 = int(new_width*0.05)
+                        x2 = int(new_width*0.95)
                         y1 = int(new_height*0.1 + t*-20)   # 초당 -20px 위쪽 이동
                         y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
                     elif effect_code == 'd':  # 아래로 이동
-                        x1 = int(new_width*0.1)
-                        x2 = int(new_width*0.9)
+                        x1 = int(new_width*0.05)
+                        x2 = int(new_width*0.95)
                         y1 = int(0 + t*20)                 # 초당 20px 아래쪽 이동
                         y2 = int(y1 + new_height*0.9)      # 세로 크기 유지
                     elif effect_code == 'i':  # 확대 (줌인)
@@ -914,7 +907,6 @@ class ShortsGeneratorApp:
                         f"오류 위치:\n{traceback.format_exc()}"
               messagebox.showerror("오류", error_message)
         
-
     def on_video_complete(self):
         self.close_loading_popup()
         messagebox.showinfo("완료", f"영상 제작이 완료되었습니다!")
