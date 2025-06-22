@@ -80,7 +80,7 @@ class SubtitleBlock(tk.Label):
 
     def on_key_press(self, event):
         keysym = event.keysym.lower()
-
+ 
         if keysym == 'return':
             self.on_enter_key(event)
         elif keysym == 'backspace':
